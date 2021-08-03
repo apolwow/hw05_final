@@ -41,3 +41,19 @@ class Comment(models.Model):
     )
     text = models.TextField()
     created = models.DateTimeField('date published', auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created']
+
+    def __str__(self):
+        return self.text
+
+
+class Follow(models.Model):
+    """Класс Follow для управления системой подписки на авторов."""
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='follower'
+    )
+    author = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='following'
+    )
