@@ -122,6 +122,7 @@ def add_comment(request, username, post_id):
     return render(request, 'posts/comments.html', context)
 
 
+@require_http_methods(['GET'])
 @login_required
 def follow_index(request):
     posts = Post.objects.filter(author__following__user=request.user)
@@ -132,6 +133,7 @@ def follow_index(request):
     return render(request, 'posts/follow.html', context)
 
 
+@require_http_methods(['GET'])
 @login_required
 def profile_follow(request, username):
     author = get_object_or_404(User, username=username)
@@ -140,6 +142,7 @@ def profile_follow(request, username):
     return redirect('profile', username=username)
 
 
+@require_http_methods(['GET'])
 @login_required
 def profile_unfollow(request, username):
     Follow.objects.filter(
