@@ -119,7 +119,7 @@ def add_comment(request, username, post_id):
         comment.save()
         return redirect('post', username=username, post_id=post_id)
     context = {'form': form}
-    return render(request, 'posts/comments.html', context)
+    return render(request, 'includes/comments.html', context)
 
 
 @require_http_methods(['GET'])
