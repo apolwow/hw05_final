@@ -1,24 +1,22 @@
 import shutil
-import tempfile
 
 from django import forms
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
-from ..models import Group, Post
+from ..models import Comment, Follow, Group, Post
 
 User = get_user_model()
 
 
+@override_settings(MEDIA_ROOT='temp_media')
 class PostPagesTests(TestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        settings.MEDIA_ROOT = tempfile.mkdtemp(dir=settings.BASE_DIR)
         cls.user = User.objects.create(username='testuser')
         cls.group = Group.objects.create(
             title='Тестовый заголовок',
@@ -44,8 +42,8 @@ class PostPagesTests(TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        shutil.rmtree(settings.MEDIA_ROOT, ignore_errors=True)
         super().tearDownClass()
+        shutil.rmtree('temp_media', ignore_errors=True)
 
     def setUp(self):
         self.guest_client = Client()
@@ -178,4 +176,121 @@ class PostPagesTests(TestCase):
         cache.clear()
         self.assertNotEqual(
             response.content, self.guest_client.get(url).content
+        )
+
+
+class FollowPagesTests(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.user_one = User.objects.create(username='author')
+        cls.user_two = User.objects.create(username='follow')
+
+    def setUp(self):
+        self.authorized_client = Client()
+        self.authorized_client.force_login(self.user_two)
+        self.post = Post.objects.create(text='Текст', author=self.user_one)
+        Follow.objects.create(user=self.user_two, author=self.user_one)
+
+    def test_auth_user_can_following(self):
+        """Тестирование подписок на других пользователей."""
+
+        url = reverse('profile_follow', kwargs={
+            'username': self.user_one.username
+        })
+
+        Follow.objects.all().delete()
+        self.authorized_client.get(url)
+
+        self.assertTrue(Follow.objects.filter(
+            user=self.user_two,
+            author=self.user_one
+        ).exists())
+
+    def test_auth_user_can_unfollowing(self):
+        """Тестирование возможности отписки от других пользователей."""
+
+        url = reverse('profile_unfollow', kwargs={
+            'username': self.user_one.username
+        })
+
+        self.authorized_client.get(url)
+
+        self.assertFalse(Follow.objects.filter(
+            user=self.user_two,
+            author=self.user_one
+        ).exists())
+
+    def test_display_subscribe_to_author(self):
+        """Новая запись появляется в ленте тех, кто на автора подписан."""
+
+        url = reverse('follow_index')
+
+        response = self.authorized_client.get(url)
+
+        self.assertEqual(response.context['page'][0], self.post)
+
+    def test_display_no_subscribe_to_author(self):
+        """Запись не появляется в ленте тех, кто на автора не подписан."""
+
+        user = User.objects.create(username='unfollow')
+        self.authorized_client.force_login(user)
+        url = reverse('follow_index')
+
+        response = self.authorized_client.get(url)
+
+        self.assertTrue(self.post not in response.context['page'])
+
+
+class CommentPagesTests(TestCase):
+    def setUp(self):
+        self.user_one = User.objects.create(username='author')
+        self.user_two = User.objects.create(username='comment')
+        self.post = Post.objects.create(text='Текст', author=self.user_one)
+        self.guest_client = Client()
+        self.authorized_client = Client()
+        self.authorized_client.force_login(self.user_two)
+
+    def test_auth_user_comment(self):
+        """Авторизованный пользователь может комментировать посты."""
+        comment = {'text': 'Пользователь авторизован'}
+        url = reverse('post', kwargs={
+            'username': self.user_one,
+            'post_id': self.post.id
+        })
+
+        response = self.authorized_client.post(
+            reverse('add_comment', kwargs={
+                'username': self.user_one,
+                'post_id': self.post.id
+            }),
+            data=comment,
+            follow=True
+        )
+
+        self.assertRedirects(response, url)
+        self.assertTrue(
+            Comment.objects.filter(
+                text=comment.get('text'),
+                author=self.user_two,
+                post=self.post
+            ).exists()
+        )
+
+    def test_guest_comment(self):
+        """Анонимный пользователь не может комментировать посты."""
+        count_comments = Comment.objects.count()
+        comment = {'text': 'Пользователь не авторизован'}
+
+        self.guest_client.post(
+            reverse('add_comment', kwargs={
+                'username': self.user_one,
+                'post_id': self.post.id
+            }),
+            data=comment,
+            follow=True
+        )
+
+        self.assertEqual(
+            Comment.objects.count(), count_comments
         )
