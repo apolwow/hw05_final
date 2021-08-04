@@ -53,8 +53,7 @@ class PostPagesTests(TestCase):
             text='Какой-то текст',
             author=self.user,
             group=self.group,
-            image=self.uploaded
-            )
+            image=self.uploaded)
 
     def test_pages_use_correct_template(self):
         """URL-адрес использует соответствующий шаблон."""
