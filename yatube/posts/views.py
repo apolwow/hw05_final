@@ -92,7 +92,7 @@ def post_edit(request, username, post_id):
         form.save()
         return redirect('post', username=username, post_id=post_id)
 
-    context = {'form': form, 'edit': edit}
+    context = {'form': form, 'edit': edit, 'post': post}
     return render(request, 'posts/new_post.html', context)
 
 
