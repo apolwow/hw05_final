@@ -1,6 +1,8 @@
 import shutil
+import tempfile
 from http import HTTPStatus
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase, override_settings
@@ -11,7 +13,7 @@ from ..models import Group, Post
 User = get_user_model()
 
 
-@override_settings(MEDIA_ROOT='temp_media')
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp(dir=settings.BASE_DIR))
 class PostFormTests(TestCase):
     @classmethod
     def setUpClass(cls):
@@ -25,8 +27,8 @@ class PostFormTests(TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        shutil.rmtree(settings.MEDIA_ROOT, ignore_errors=True)
         super().tearDownClass()
-        shutil.rmtree('temp_media', ignore_errors=True)
 
     def setUp(self):
         self.authorized_client = Client()

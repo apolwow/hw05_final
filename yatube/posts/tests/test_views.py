@@ -1,6 +1,8 @@
 import shutil
+import tempfile
 
 from django import forms
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -12,7 +14,7 @@ from ..models import Comment, Follow, Group, Post
 User = get_user_model()
 
 
-@override_settings(MEDIA_ROOT='temp_media')
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp(dir=settings.BASE_DIR))
 class PostPagesTests(TestCase):
     @classmethod
     def setUpClass(cls):
@@ -42,10 +44,11 @@ class PostPagesTests(TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        shutil.rmtree(settings.MEDIA_ROOT, ignore_errors=True)
         super().tearDownClass()
-        shutil.rmtree('temp_media', ignore_errors=True)
 
     def setUp(self):
+        cache.clear()
         self.guest_client = Client()
         self.authorized_client = Client()
         self.authorized_client.force_login(self.user)
@@ -58,7 +61,6 @@ class PostPagesTests(TestCase):
     def test_pages_use_correct_template(self):
         """URL-адрес использует соответствующий шаблон."""
 
-        cache.clear()
         urls_templates = {
             reverse('index'): 'posts/index.html',
             reverse('group_name', args=[self.group.slug]): 'posts/group.html',
@@ -76,7 +78,6 @@ class PostPagesTests(TestCase):
     def test_home_page_shows_correct_context(self):
         """На главной старнице корректный контекст и созданный пост."""
 
-        cache.clear()
         url = reverse('index')
 
         response = self.authorized_client.get(url)
@@ -182,47 +183,47 @@ class FollowPagesTests(TestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.user_one = User.objects.create(username='author')
-        cls.user_two = User.objects.create(username='follow')
+        cls.user_author = User.objects.create(username='author')
+        cls.user_follow = User.objects.create(username='follow')
 
     def setUp(self):
         self.authorized_client = Client()
-        self.authorized_client.force_login(self.user_two)
-        self.post = Post.objects.create(text='Текст', author=self.user_one)
-        Follow.objects.create(user=self.user_two, author=self.user_one)
+        self.authorized_client.force_login(self.user_follow)
+        self.post = Post.objects.create(text='Текст', author=self.user_author)
 
     def test_auth_user_can_following(self):
         """Тестирование подписок на других пользователей."""
 
         url = reverse('profile_follow', kwargs={
-            'username': self.user_one.username
+            'username': self.user_author.username
         })
 
-        Follow.objects.all().delete()
         self.authorized_client.get(url)
 
         self.assertTrue(Follow.objects.filter(
-            user=self.user_two,
-            author=self.user_one
+            user=self.user_follow,
+            author=self.user_author
         ).exists())
 
     def test_auth_user_can_unfollowing(self):
         """Тестирование возможности отписки от других пользователей."""
 
+        Follow.objects.create(user=self.user_follow, author=self.user_author)
         url = reverse('profile_unfollow', kwargs={
-            'username': self.user_one.username
+            'username': self.user_author.username
         })
 
         self.authorized_client.get(url)
 
         self.assertFalse(Follow.objects.filter(
-            user=self.user_two,
-            author=self.user_one
+            user=self.user_follow,
+            author=self.user_author
         ).exists())
 
     def test_display_subscribe_to_author(self):
         """Новая запись появляется в ленте тех, кто на автора подписан."""
 
+        Follow.objects.create(user=self.user_follow, author=self.user_author)
         url = reverse('follow_index')
 
         response = self.authorized_client.get(url)
@@ -232,8 +233,8 @@ class FollowPagesTests(TestCase):
     def test_display_no_subscribe_to_author(self):
         """Запись не появляется в ленте тех, кто на автора не подписан."""
 
-        user = User.objects.create(username='unfollow')
-        self.authorized_client.force_login(user)
+        user_unfollow = User.objects.create(username='unfollow')
+        self.authorized_client.force_login(user_unfollow)
         url = reverse('follow_index')
 
         response = self.authorized_client.get(url)
@@ -243,24 +244,24 @@ class FollowPagesTests(TestCase):
 
 class CommentPagesTests(TestCase):
     def setUp(self):
-        self.user_one = User.objects.create(username='author')
-        self.user_two = User.objects.create(username='comment')
-        self.post = Post.objects.create(text='Текст', author=self.user_one)
+        self.user_author = User.objects.create(username='author')
+        self.user_comment = User.objects.create(username='comment')
+        self.post = Post.objects.create(text='Текст', author=self.user_author)
         self.guest_client = Client()
         self.authorized_client = Client()
-        self.authorized_client.force_login(self.user_two)
+        self.authorized_client.force_login(self.user_comment)
 
     def test_auth_user_comment(self):
         """Авторизованный пользователь может комментировать посты."""
         comment = {'text': 'Пользователь авторизован'}
         url = reverse('post', kwargs={
-            'username': self.user_one,
+            'username': self.user_author,
             'post_id': self.post.id
         })
 
         response = self.authorized_client.post(
             reverse('add_comment', kwargs={
-                'username': self.user_one,
+                'username': self.user_author,
                 'post_id': self.post.id
             }),
             data=comment,
@@ -271,7 +272,7 @@ class CommentPagesTests(TestCase):
         self.assertTrue(
             Comment.objects.filter(
                 text=comment.get('text'),
-                author=self.user_two,
+                author=self.user_comment,
                 post=self.post
             ).exists()
         )
@@ -283,7 +284,7 @@ class CommentPagesTests(TestCase):
 
         self.guest_client.post(
             reverse('add_comment', kwargs={
-                'username': self.user_one,
+                'username': self.user_author,
                 'post_id': self.post.id
             }),
             data=comment,

@@ -40,8 +40,10 @@ def profile(request, username):
     paginator = Paginator(posts, 10)
     page_number = request.GET.get('page')
     page = paginator.get_page(page_number)
-    following = Follow.objects.filter(
-        user__username=request.user, author__username=username).all()
+    following = False
+    if request.user.is_authenticated:
+        following = Follow.objects.filter(
+            user=request.user, author=page_author).exists()
     context = {
         'page': page, 'author': page_author, 'following': following
     }
@@ -96,17 +98,6 @@ def post_edit(request, username, post_id):
     return render(request, 'posts/new_post.html', context)
 
 
-@require_http_methods(['GET'])
-def page_not_found(request, exception):
-    context = {'path': request.path}
-    return render(request, 'misc/404.html', context, status=404)
-
-
-@require_http_methods(['GET'])
-def server_error(request):
-    return render(request, 'misc/500.html', status=500)
-
-
 @require_http_methods(['GET', 'POST'])
 @login_required
 def add_comment(request, username, post_id):
@@ -145,7 +136,9 @@ def profile_follow(request, username):
 @require_http_methods(['GET'])
 @login_required
 def profile_unfollow(request, username):
-    Follow.objects.filter(
-        user_id=request.user.id,
-        author_id=User.objects.get(username=username)).delete()
+    author = get_object_or_404(User, username=username)
+    follow = get_object_or_404(Follow.objects.filter(
+        user=request.user, author=author
+    ))
+    follow.delete()
     return redirect('profile', username=username)
